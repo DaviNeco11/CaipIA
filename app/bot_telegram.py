@@ -60,7 +60,7 @@ def processar_mensagem(update):
         resposta = requests.post(
             f"{URL_API}/mensagem",
             json={"texto": texto},
-            timeout=15
+            timeout=90
         )
 
         resposta.raise_for_status()
