@@ -10,17 +10,6 @@ TIMEOUT_PADRAO = 30
 
 
 def extrair_periodo(texto: str) -> tuple[str, str]:
-    """
-    Extrai um período simples do texto do usuário.
-
-    Exemplos aceitos:
-    - "2025"
-    - "2025-03"
-    - "2025/03"
-
-    Retorna:
-    (data_inicial, data_final) no formato YYYY-MM
-    """
     texto = texto.lower()
 
     resultado_mes = re.search(r"\b(20\d{2})[-/](0[1-9]|1[0-2])\b", texto)
@@ -41,12 +30,6 @@ def extrair_periodo(texto: str) -> tuple[str, str]:
 
 
 def consultar_exportacoes_gerais(data_inicial: str, data_final: str) -> dict[str, Any] | None:
-    """
-    Consulta o endpoint de dados gerais do Comex Stat.
-
-    A documentação oficial indica POST em /general com campos como:
-    flow, monthDetail, period, details e metrics.
-    """
     url = f"{URL_BASE_COMEX}/general"
     params = {"language": "pt"}
 
@@ -70,24 +53,17 @@ def consultar_exportacoes_gerais(data_inicial: str, data_final: str) -> dict[str
 
 
 def extrair_registros(resposta_api: dict[str, Any]) -> list[dict[str, Any]]:
-    """
-    Localiza a lista de registros na resposta da API.
-
-    A estrutura real pode variar, então a extração é defensiva.
-    """
     if not isinstance(resposta_api, dict):
         return []
 
-    candidatos_diretos = ["data", "list", "items", "results"]
-    for chave in candidatos_diretos:
+    for chave in ["data", "list", "items", "results"]:
         valor = resposta_api.get(chave)
         if isinstance(valor, list):
             return [item for item in valor if isinstance(item, dict)]
 
     data = resposta_api.get("data")
     if isinstance(data, dict):
-        candidatos_internos = ["data", "list", "items", "results"]
-        for chave in candidatos_internos:
+        for chave in ["data", "list", "items", "results"]:
             valor = data.get(chave)
             if isinstance(valor, list):
                 return [item for item in valor if isinstance(item, dict)]
@@ -96,9 +72,6 @@ def extrair_registros(resposta_api: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def obter_primeiro_valor_existente(registro: dict[str, Any], chaves: list[str]) -> Any:
-    """
-    Retorna o primeiro valor encontrado dentre várias chaves possíveis.
-    """
     for chave in chaves:
         if chave in registro and registro[chave] not in (None, ""):
             return registro[chave]
@@ -106,9 +79,6 @@ def obter_primeiro_valor_existente(registro: dict[str, Any], chaves: list[str]) 
 
 
 def converter_valor_monetario(valor: Any) -> float | None:
-    """
-    Converte o valor retornado pela API para float, quando possível.
-    """
     if valor is None:
         return None
 
@@ -125,10 +95,7 @@ def converter_valor_monetario(valor: Any) -> float | None:
     return None
 
 
-def formatar_valor_brl(valor: float | None) -> str:
-    """
-    Formata um número para exibição amigável.
-    """
+def formatar_valor_usd(valor: float | None) -> str:
     if valor is None:
         return "valor não disponível"
 
@@ -137,47 +104,22 @@ def formatar_valor_brl(valor: float | None) -> str:
     return f"US$ {texto}"
 
 
-def identificar_produto_destaque(registros: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """
-    Procura o registro com maior valor FOB dentro da resposta.
-
-    Como os nomes exatos das chaves podem variar, usamos alternativas.
-    """
-    if not registros:
-        return None
-
-    melhor_registro = None
-    maior_valor = -1.0
-
-    for registro in registros:
-        valor_bruto = obter_primeiro_valor_existente(
-            registro,
-            [
-                "metricFOB",
-                "metricfob",
-                "fob",
-                "value",
-                "valor",
-            ],
-        )
-        valor = converter_valor_monetario(valor_bruto)
-        if valor is None:
-            continue
-
-        if valor > maior_valor:
-            maior_valor = valor
-            melhor_registro = registro
-
-    if melhor_registro is None:
+def obter_dados_produto(registro: dict[str, Any]) -> dict[str, Any] | None:
+    valor_bruto = obter_primeiro_valor_existente(
+        registro,
+        ["metricFOB", "metricfob", "fob", "value", "valor"]
+    )
+    valor = converter_valor_monetario(valor_bruto)
+    if valor is None:
         return None
 
     codigo = obter_primeiro_valor_existente(
-        melhor_registro,
+        registro,
         ["ncmCode", "ncm", "code", "codigo"]
     )
 
     descricao = obter_primeiro_valor_existente(
-        melhor_registro,
+        registro,
         ["ncmDescription", "ncm_description", "description", "descricao", "name", "nome"]
     )
 
@@ -187,19 +129,29 @@ def identificar_produto_destaque(registros: list[dict[str, Any]]) -> dict[str, A
     return {
         "codigo": codigo,
         "descricao": descricao or "produto não identificado",
-        "valor_fob": maior_valor,
+        "valor_fob": valor,
+        "valor_formatado": formatar_valor_usd(valor),
     }
 
 
-def obter_dados_comex(texto_usuario: str) -> dict[str, Any]:
-    """
-    Função principal do serviço de Comex.
+def obter_top_produtos(registros: list[dict[str, Any]], limite: int = 3) -> list[dict[str, Any]]:
+    produtos = []
 
-    MVP:
-    - extrai período do texto
-    - consulta exportações gerais
-    - identifica o produto com maior valor FOB no período
-    """
+    for registro in registros:
+        produto = obter_dados_produto(registro)
+        if produto:
+            produtos.append(produto)
+
+    produtos_ordenados = sorted(
+        produtos,
+        key=lambda item: item["valor_fob"],
+        reverse=True
+    )
+
+    return produtos_ordenados[:limite]
+
+
+def obter_dados_comex(texto_usuario: str) -> dict[str, Any]:
     data_inicial, data_final = extrair_periodo(texto_usuario)
 
     resposta_api = consultar_exportacoes_gerais(data_inicial, data_final)
@@ -216,11 +168,11 @@ def obter_dados_comex(texto_usuario: str) -> dict[str, Any]:
             "mensagem": "Não encontrei dados de exportação para o período informado."
         }
 
-    destaque = identificar_produto_destaque(registros)
-    if not destaque:
+    top_produtos = obter_top_produtos(registros, limite=3)
+    if not top_produtos:
         return {
             "sucesso": False,
-            "mensagem": "Os dados foram retornados, mas não consegui identificar o produto de destaque."
+            "mensagem": "Os dados foram retornados, mas não consegui identificar os produtos de destaque."
         }
 
     if data_inicial == data_final:
@@ -228,13 +180,23 @@ def obter_dados_comex(texto_usuario: str) -> dict[str, Any]:
     else:
         periodo = f"{data_inicial} a {data_final}"
 
+    produto_principal = top_produtos[0]
+
+    ranking_texto = []
+    for i, produto in enumerate(top_produtos, start=1):
+        ranking_texto.append(
+            f"{i}. {produto['descricao']} - {produto['valor_formatado']}"
+        )
+
     return {
         "sucesso": True,
         "tipo": "comex",
         "periodo": periodo,
-        "produto": destaque["descricao"],
-        "codigo": destaque["codigo"],
-        "valor": formatar_valor_brl(destaque["valor_fob"]),
-        "valor_numerico": destaque["valor_fob"],
+        "produto": produto_principal["descricao"],
+        "codigo": produto_principal["codigo"],
+        "valor": produto_principal["valor_formatado"],
+        "valor_numerico": produto_principal["valor_fob"],
+        "top_produtos": top_produtos,
+        "ranking": "\n".join(ranking_texto),
         "mensagem": "Consulta realizada com sucesso."
     }

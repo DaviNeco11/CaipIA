@@ -83,15 +83,19 @@ def iniciar_bot():
 
     offset = None
 
-    while True:
-        dados = obter_updates(offset)
+    try:
+        while True:
+            dados = obter_updates(offset)
 
-        if dados and "result" in dados:
-            for update in dados["result"]:
-                offset = update["update_id"] + 1
-                processar_mensagem(update)
+            if dados and "result" in dados:
+                for update in dados["result"]:
+                    offset = update["update_id"] + 1
+                    processar_mensagem(update)
 
-        time.sleep(1)
+            time.sleep(1)
+
+    except KeyboardInterrupt:
+        print("\n🛑 Bot encerrado pelo usuário.")
 
 
 # ▶️ Ponto de entrada

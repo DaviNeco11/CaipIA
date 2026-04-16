@@ -130,10 +130,10 @@ def gerar_resposta_fallback(dados: dict) -> str:
         )
 
     if tipo == "comex":
+        ranking = dados.get("ranking", "")
         return (
-            f"No período {dados.get('periodo')}, "
-            f"o destaque das exportações foi {dados.get('produto')}, "
-            f"com valor de {dados.get('valor')}."
+            f"Top exportações no período {dados.get('periodo')}:\n"
+            f"{ranking}"
         )
 
     return "Não consegui gerar uma resposta adequada."
