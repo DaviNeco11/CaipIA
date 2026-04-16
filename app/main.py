@@ -48,6 +48,10 @@ def processar_mensagem(mensagem: MensagemEntrada):
                 "clima": dados_clima,
                 "comex": dados_comex
             }
+        elif intencao == "fora_escopo":
+            return {
+                "resposta": "Posso te ajudar com clima, exportações ou resumo do cenário."
+            }
 
         else:
             return {"resposta": "Desculpe, não entendi sua solicitação."}
